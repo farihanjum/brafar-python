@@ -583,7 +583,7 @@ class FaultLocator:
                 test_result.set_need_recall(True)
                 return test_result
             co_var = variable_map.get(var)
-            if correct_in_values.get(co_var) is None:
+            if co_var not in correct_in_values:
                 doubt_vars.append(var)
             else:
                 if buggy_in_values.get(var) != correct_in_values.get(co_var):
@@ -620,14 +620,14 @@ class FaultLocator:
                 test_result.set_need_b2b_repair()
                 return test_result
             co_var = variable_map.get(var)
-            if correct_out_values.get(co_var) is None:
+            if co_var not in correct_out_values:
                 continue
             if buggy_out_values.get(var) != correct_out_values.get(co_var):
                 test_result.set_is_fault(True)
         for var in correct_out_values.keys():
             if variable_map_21.get(var) is not None:
                 b_var = variable_map_21.get(var)
-                if buggy_out_values.get(b_var) is None:
+                if b_var not in buggy_out_values:
                     test_result.set_is_fault(True)
         if cur_block_node.get_jump_block() is None and related_correct_block_node.get_jump_block() is not None:
             test_result.set_is_fault(True)
