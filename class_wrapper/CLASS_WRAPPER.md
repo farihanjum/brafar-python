@@ -75,8 +75,13 @@ Class code that would turn into broken functions is stopped with "not converted"
 | a method with default values, *args or **kwargs | default values or *args |
 | a method whose first input is not named self | first parameter is not self |
 | self used on its own, e.g. vars(self) | uses self directly |
+| no class in the file | no class |
+| no def foo in the class (also foo = lambda ...) | no def foo in the class |
+| foo defined twice in the class | foo defined more than once |
+| a method other than foo whose number of inputs no correct answer's method of that name has, e.g. total(self, tax) | method total has 1 input(s) besides self; no pool program's total has that many |
+| code that does not parse | invalid syntax (<unknown>, line N) |
 
-None of the 144 EiPL class answers has any of these.
+None of the 144 EiPL class answers has any of these. One bad answer never stops the whole run: a class that does not parse, has no class, or runs over 30 seconds fails its class tests with "RUN ERROR" and the reason, and the run goes on to the next answer.
 
 ## Known limits
 

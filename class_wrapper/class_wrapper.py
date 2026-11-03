@@ -5,6 +5,9 @@ Every answer has the same given methods (shopping_cart: __init__, add_price, tot
 add_player); only foo is the student's. So:
     1. to_functions: every method except __init__/add_* becomes a function; self.<label> -> <label> (an extra last
        parameter, <label>_ if a method already has a parameter with that name), self.<method>(..) -> <method>(.., <label>)
+       check_shape (class code that cannot be turned into working functions, or no def foo) and check_helpers (a
+       method other than foo whose number of inputs no pool program has) stop an answer as "not converted", with
+       the reason.
     2. BRAFAR's own pick, as in run_brafar.py: one try per parameter choice, all tries in one process
        (brafar_worker.py, a try/except per try; BRAFAR's Searcher picks the program per function). Pool, as BRAFAR's
        S_Brafar builds it: every correct attempt, converted (so it keeps the given methods, e.g. total) + reference.py
@@ -64,6 +67,8 @@ def check_shape(tree):
     if len(classes) != 1: raise ValueError("more than one class" if classes else "no class")
     docstring = lambda n: isinstance(n, ast.Expr) and isinstance(n.value, ast.Constant) and isinstance(n.value.value, str)
     if any(n is not classes[0] and not docstring(n) for n in tree.body): raise ValueError("code outside the class")
+    foos = [m for m in own_methods(classes[0]) if m.name == "foo"]
+    if len(foos) != 1: raise ValueError("foo defined more than once" if foos else "no def foo in the class")
     for m in own_methods(classes[0]):
         a = m.args
         if m.decorator_list: raise ValueError(f"decorated method {m.name}")
@@ -139,6 +144,23 @@ def pool_programs(data, passing):
     pool = correct + [data / "code/reference/reference.py"] + [data / "code/wrong" / f"{a}.py" for a in passing]
     return pool, f"{len(correct)} correct + reference + {len(passing)} wrong that pass the tests"
 
+def input_counts(paths):
+    """{function name: every number of inputs it has in these programs} (as in run_brafar.py)."""
+    counts = collections.defaultdict(set)
+    for p in paths:
+        for n in ast.parse(Path(p).read_text()).body:
+            if isinstance(n, ast.FunctionDef): counts[n.name].add(len(n.args.args))
+    return counts
+
+def check_helpers(funcs, pool_inputs):
+    """Stop (ValueError -> "not converted") on a method other than foo whose number of inputs no pool program's
+    method of that name has: BRAFAR would crash or give no repair, as the input-count step only changes foo
+    (as check_inputs in run_brafar.py). None of the 27 wrong class answers (2026-11-03) has one."""
+    for f in ast.parse(funcs).body:
+        if f.name != "foo" and f.name in pool_inputs and len(f.args.args) not in pool_inputs[f.name]:
+            raise ValueError(f"method {f.name} has {len(f.args.args) - 1} input(s) besides self; "
+                             f"no pool program's {f.name} has that many")
+
 def param_options(src, params):
     """run_brafar.py's param_options for foo, but the label parameter stays last and is never removed."""
     sp = [a.arg for a in foo_def(ast.parse(src)).args.args]
@@ -176,8 +198,16 @@ print(json.dumps(out))
 '''
 
 def class_tests(path, tests, label):
-    p = subprocess.run([PY, "-I", "-c", CLASS_TEST, str(path), json.dumps(tests), label], capture_output=True, text=True, timeout=30)
-    return json.loads(p.stdout)
+    """[args, state, got, expected, pass] per test. When the class cannot be run at all (does not parse, no class,
+    over 30 s), every test fails with the reason, instead of the whole run stopping."""
+    try:
+        p = subprocess.run([PY, "-I", "-c", CLASS_TEST, str(path), json.dumps(tests), label], capture_output=True, text=True, timeout=30)
+    except subprocess.TimeoutExpired:
+        return [[a, s, "RUN ERROR: over 30 s", x, False] for a, s, x in tests]
+    try: return json.loads(p.stdout)
+    except ValueError:
+        why = (p.stderr.strip().splitlines() or ["no output"])[-1][:60]
+        return [[a, s, "RUN ERROR: " + why, x, False] for a, s, x in tests]
 
 if __name__ == "__main__":
     short = sys.argv[1]; q = "eipl/" + short
@@ -213,6 +243,7 @@ if __name__ == "__main__":
         except Exception: continue
         if all(t[4] for t in class_tests(chk, tests, label)): passing.append(r.anon_id)
     pool, kind = pool_programs(data, passing)
+    pool_inputs = input_counts(pool)
     print(f"   pool = {kind}")
     runs = HERE / "runs_class" / short; shutil.rmtree(runs, ignore_errors=True); runs.mkdir(parents=True)
     pool_json = runs / "pool.json"; pool_json.write_text(json.dumps([str(p) for p in pool]))
@@ -226,7 +257,7 @@ if __name__ == "__main__":
         a = r.anon_id; sq = runs / a; sq.mkdir(parents=True)
         orig = sq / "student_class.py"; orig.write_text(r.derived_gpt_code)
         orig_ok = all(t[4] for t in class_tests(orig, tests, label))
-        try: funcs = to_functions(r.derived_gpt_code, label)
+        try: funcs = to_functions(r.derived_gpt_code, label); check_helpers(funcs, pool_inputs)
         except Exception as e:
             note(a, "not converted", orig_ok, error=str(e)); continue
         jobs = []
