@@ -1,0 +1,5 @@
+data_class/
+runs_class/
+brafar_class_*.json
+log.txt
+__pycache__/
